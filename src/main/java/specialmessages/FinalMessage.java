@@ -1,8 +1,10 @@
-package SpecialMessages;
+package specialmessages;
 
 import java.io.Serializable;
 
-/**Sends to client after file accepting*/
+/**
+ * Sends to client after file accepting
+ */
 public class FinalMessage implements Serializable {
 
     private int status;

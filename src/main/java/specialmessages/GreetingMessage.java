@@ -1,14 +1,15 @@
-package SpecialMessages;
+package specialmessages;
 
 import java.io.Serializable;
 
-/**Sends to server before start sending file
+/**
+ * Sends to server before start sending file
  */
 public class GreetingMessage implements Serializable {
     private String fName;
     private long fSize;
 
-    public GreetingMessage(String fileName, long fileSize){
+    public GreetingMessage(String fileName, long fileSize) {
         fName = fileName;
         fSize = fileSize;
     }

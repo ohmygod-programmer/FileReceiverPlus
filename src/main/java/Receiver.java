@@ -1,34 +1,49 @@
-import SpecialMessages.FinalMessage;
-import SpecialMessages.GreetingMessage;
+import specialmessages.FinalMessage;
+import specialmessages.GreetingMessage;
+import org.apache.commons.io.FilenameUtils;
 
 import java.io.*;
 import java.net.Socket;
 import java.time.LocalDateTime;
 
 
-public class Receiver implements Runnable{
-    private static int STATISTICS_PRINT_PERIOD = 3000; // in milliseconds
-    public static final int SOCKET_TIMEOUT = 10000; // in milliseconds
-    private static int SIZE_OF_READ_BUFFER = 256;
-    Socket socket;
-    String path;
-    Receiver(Socket s, String writing_directory){
+public class Receiver implements Runnable {
+    private static final int STATISTICS_PRINT_PERIOD = 3000; // in milliseconds
+    private static final int SOCKET_TIMEOUT = 10000; // in milliseconds
+    private static final int SIZE_OF_READ_BUFFER = 256;
+    private static final int MAXIMUM_FILE_NUM = 100;
+    private Socket socket;
+    private String path;
+
+    Receiver(Socket s, String writing_directory) {
         socket = s;
         path = writing_directory;
     }
 
-    private void closeSocket(){
+    private void closeSocket() {
         try {
             socket.close();
+        } catch (Exception e1) {
         }
-        catch (Exception e1){}
     }
 
-    public void run(){
+    private File createFile(String path) throws IOException {
+        File file = new File(path);
+        file.getParentFile().mkdirs();
+        int number = 0;
+        while (file.exists() && number < MAXIMUM_FILE_NUM) {
+            number++;
+            file = new File(file.getParent() + "/" +
+                    FilenameUtils.getBaseName(path) + "(" + number + ")" + "." + FilenameUtils.getExtension(path));
+        }
+        file.createNewFile();
+        return file;
+    }
+
+    public void run() {
         try {
             socket.setSoTimeout(SOCKET_TIMEOUT);
-        }
-        catch (Exception e){
+        } catch (Exception e) {
             System.out.println(e);
             return;
         }
@@ -40,117 +55,109 @@ public class Receiver implements Runnable{
         GreetingMessage greetingMessage;
 
 
-
         try {
             greetingMessage = (GreetingMessage) new ObjectInputStream(socket.getInputStream()).readObject();
             in = new BufferedInputStream(socket.getInputStream());
-        }
-        catch (ClassCastException e){
+        } catch (ClassCastException e) {
             System.out.println(sessionName + ": Wrong greeting message from client. Receive is cancelling...");
             closeSocket();
             return;
-        }
-        catch (Exception e){
+        } catch (Exception e) {
             System.out.println(sessionName + ": " + e);
             closeSocket();
             return;
         }
 
-        String filename = greetingMessage.getFileName();
-        long filesize = greetingMessage.getFileSize();
-        path = path + "/" + sessionName + "/" + filename;
+        String fileName = greetingMessage.getFileName();
+        long fileSize = greetingMessage.getFileSize();
+        path = path + "/" + sessionName + "/" + fileName;
         File newFile = new File(path);
-        newFile.getParentFile().mkdirs();
+
         BufferedOutputStream fileStream;
         try {
-            newFile.createNewFile();
+            newFile = createFile(path);
             fileStream = new BufferedOutputStream(new FileOutputStream(newFile));
-        }
-        catch (Exception e){
+        } catch (Exception e) {
             System.out.println(sessionName + ": Error with creating new file");
             closeSocket();
             return;
-        };
+        }
+
         System.out.println(sessionName + ": File " + newFile.getAbsolutePath() + " is created");
-        long accbytes_number = 0;
+        long accBytesNumber = 0;
         byte[] buf = new byte[SIZE_OF_READ_BUFFER];
 
         double avSpeed = 0;
-        double curspeed = 0;
-        boolean speedisprinted = false;
-        try{
+        double curSpeed = 0;
+        boolean speedIsPrinted = false;
+        try {
             int n;
-            long starttime = System.currentTimeMillis();
-            long lasttime = starttime;
-            long lastprinttime = starttime;
-            long curtime = starttime;
-            while (accbytes_number < filesize){
-                if ((n = in.read(buf, 0, SIZE_OF_READ_BUFFER)) == -1){
+            long startTime = System.currentTimeMillis();
+            long lastTime = startTime;
+            long lastPrintTime = startTime;
+            long curTime = startTime;
+            while (accBytesNumber < fileSize) {
+                if ((n = in.read(buf, 0, SIZE_OF_READ_BUFFER)) == -1) {
                     break;
                 }
-                long curbytes_accepted = 0;
-                if (filesize - accbytes_number >= SIZE_OF_READ_BUFFER){
+                long curBytesAccepted = 0;
+                if (fileSize - accBytesNumber >= SIZE_OF_READ_BUFFER) {
                     fileStream.write(buf, 0, n);
-                    accbytes_number += SIZE_OF_READ_BUFFER;
-                    curbytes_accepted = SIZE_OF_READ_BUFFER;
+                    accBytesNumber += SIZE_OF_READ_BUFFER;
+                    curBytesAccepted = SIZE_OF_READ_BUFFER;
+                } else {
+                    fileStream.write(buf, 0, (int) (fileSize - accBytesNumber));
+                    accBytesNumber += fileSize - accBytesNumber;
+                    curBytesAccepted = fileSize - accBytesNumber;
                 }
-                else {
-                    fileStream.write(buf, 0, (int)(filesize - accbytes_number));
-                    accbytes_number += filesize - accbytes_number;
-                    curbytes_accepted = filesize - accbytes_number;
-                }
-                curtime = System.currentTimeMillis();
+                curTime = System.currentTimeMillis();
 
-                if (curtime - lastprinttime >= STATISTICS_PRINT_PERIOD){
-                    if(curtime - starttime == 0){
-                        curtime += 1;
+                if (curTime - lastPrintTime >= STATISTICS_PRINT_PERIOD) {
+                    if (curTime - startTime == 0) {
+                        curTime += 1;
                     }
-                    curspeed = curbytes_accepted/((double)(curtime-lasttime)/1000);
-                    avSpeed = accbytes_number/((double)(curtime-starttime)/1000);
-                    System.out.println(sessionName + ": Working for " + (curtime-starttime)/1000 + " seconds." +
-                            " Current speed is " + curspeed + " bytes/s." +
+                    curSpeed = curBytesAccepted / ((double) (curTime - lastTime) / 1000);
+                    avSpeed = accBytesNumber / ((double) (curTime - startTime) / 1000);
+                    System.out.println(sessionName + ": Working for " + (curTime - startTime) / 1000 + " seconds." +
+                            " Current speed is " + curSpeed + " bytes/s." +
                             " Average speed is " + avSpeed + " bytes/s.");
-                    speedisprinted = true;
-                    lastprinttime = curtime;
+                    speedIsPrinted = true;
+                    lastPrintTime = curTime;
                 }
-                lasttime = curtime;
+                lastTime = curTime;
 
 
             }
-            if (!speedisprinted){
-                if(curtime - starttime == 0){
-                    curtime += 1;
+            if (!speedIsPrinted) {
+                if (curTime - startTime == 0) {
+                    curTime += 1;
                 }
-                avSpeed = accbytes_number/((double)(curtime-starttime)/1000);
-                System.out.println(sessionName + ": Working for " + (curtime-starttime)/1000 + " seconds." +
+                avSpeed = accBytesNumber / ((double) (curTime - startTime) / 1000);
+                System.out.println(sessionName + ": Working for " + (curTime - startTime) / 1000 + " seconds." +
                         " Average speed is " + avSpeed + " bytes/s.");
             }
-        }
-        catch (Exception e){
+        } catch (Exception e) {
             System.out.println(e);
-        }
-        finally {
+        } finally {
             try {
                 fileStream.close();
+            } catch (Exception e) {
             }
-            catch (Exception e){}
 
         }
 
         FinalMessage finalMessage;
-        if (filesize-accbytes_number == 0){
-            System.out.println(sessionName + ": File " + filename + " is successfully accepted");
-            finalMessage = new FinalMessage(FinalMessage.ACCEPTED, filesize, accbytes_number, null);
-        }
-        else {
-            System.out.println(sessionName + ": File " + filename + " isn't accepted. " +
-                    "Accepted " + accbytes_number + " out of " + filesize + " bytes.");
-            finalMessage = new FinalMessage(FinalMessage.NOTACCEPTED, filesize, accbytes_number, null);
+        if (fileSize - accBytesNumber == 0) {
+            System.out.println(sessionName + ": File " + fileName + " is successfully accepted");
+            finalMessage = new FinalMessage(FinalMessage.ACCEPTED, fileSize, accBytesNumber, null);
+        } else {
+            System.out.println(sessionName + ": File " + fileName + " isn't accepted. " +
+                    "Accepted " + accBytesNumber + " out of " + fileSize + " bytes.");
+            finalMessage = new FinalMessage(FinalMessage.NOTACCEPTED, fileSize, accBytesNumber, null);
         }
         try {
             new ObjectOutputStream(socket.getOutputStream()).writeObject(finalMessage);
-        }
-        catch (Exception e){
+        } catch (Exception e) {
             System.out.println("WTF");
         }
 
